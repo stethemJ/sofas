@@ -24,7 +24,8 @@ def build_sky_model(nside=64, cache_path=None):
     The model per pixel is:
         T(nu) = A * (nu/408)^beta_bin * exp(C * log(nu/408)^2)
 
-    where beta_bin is the mean spectral index of its equal-count decile bin.
+    where beta_bin is the median spectral index of its decile-percentile bin
+    (10 bins defined by the 0th–100th percentiles of the β distribution).
 
     Parameters
     ----------
@@ -87,12 +88,18 @@ def build_sky_model(nside=64, cache_path=None):
     beta_p = np.log(ratio) / np.log(408.0 / 230.0)
     beta_p = np.clip(beta_p, -3.0, -2.0)
 
-    # 10 equal-count decile bins
+    # 10 bins defined by decile percentile boundaries of the β distribution.
+    # Bin edges are the 0th, 10th, ..., 100th percentiles of β; each pixel is
+    # assigned to a bin by where its β falls, and gets that bin's median value.
+    # This is equivalent to equal-count binning but defined by the distribution
+    # shape rather than pixel rank, which is more robust to local outliers.
     n_pix = healpy.nside2npix(nside)
-    idx_sorted = np.argsort(beta_p)
+    bin_edges   = np.percentile(beta_p, np.linspace(0, 100, 11))   # 11 edges → 10 bins
+    bin_indices = np.digitize(beta_p, bin_edges[1:-1])              # 0 … 9
     beta_bin_map = np.empty(n_pix, dtype=float)
-    for chunk in np.array_split(idx_sorted, 10):
-        beta_bin_map[chunk] = beta_p[chunk].mean()
+    for b in range(10):
+        mask = bin_indices == b
+        beta_bin_map[mask] = np.median(beta_p[mask])
 
     # Stack observed temperatures for fitting: shape (n_pix, n_freq)
     T_obs_matrix = np.stack([T_maps[f] for f in _FIT_FREQS_MHZ], axis=1)  # (n_pix, n_freq)

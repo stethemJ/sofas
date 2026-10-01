@@ -304,11 +304,13 @@ def build_sky_model(nside=64, cache_path='data/sky_model.npy'):
     # Per-pixel spectral index
     beta_p = np.log(T_408 / T_230) / np.log(408 / 230)
     beta_p = np.clip(beta_p, -3.0, -2.0)
-    # 10 equal-count decile bins
-    idx = np.argsort(beta_p)
-    beta_bin = np.zeros_like(beta_p)
-    for b in np.array_split(idx, 10):
-        beta_bin[b] = beta_p[b].mean()
+    # 10 bins by decile percentile boundaries; each pixel gets its bin's median β
+    bin_edges   = np.percentile(beta_p, np.linspace(0, 100, 11))
+    bin_indices = np.digitize(beta_p, bin_edges[1:-1])  # 0…9
+    beta_bin = np.empty_like(beta_p)
+    for b in range(10):
+        mask = bin_indices == b
+        beta_bin[mask] = np.median(beta_p[mask])
     # Per-pixel fit: T = A*(nu/408)^beta_bin * exp(C*log(nu/408)^2)  [arXiv:2607.00299]
     # Use scipy.optimize.curve_fit over ≥5 GSM spot frequencies per pixel
     # (e.g. 45, 74, 150, 230, 408 MHz)
