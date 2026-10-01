@@ -438,21 +438,21 @@ def plot_vsh_image_theory(modes=None, heights_m=None, freq_mhz=75.0,
                            n_theta=120, n_phi=240, output_path=None):
     """3D polar surfaces showing beam power modified by image theory at varying heights.
 
-    For each VSH mode (l, m), shows B(θ,φ) = |E_tot_theta|² + |E_tot_phi|²
-    at several heights above a PEC ground plane (upper hemisphere only).
-    Layout: pairs of rows (M top, N bottom) per mode; columns = heights.
-
-    Image theory:
-        E_tot_theta = E_theta + E_img_theta * exp(2i k h cosθ)   R_theta = +1
-        E_tot_phi   = E_phi   - E_img_phi   * exp(2i k h cosθ)   R_phi   = -1
+    Each row-pair (M top, N bottom) corresponds to one mode entry; columns are heights.
+    Image theory: R_theta=+1 (TM preserved), R_phi=−1 (TE flipped).
 
     Args:
-        modes:        List of (l, m) tuples. Defaults to [(1,0),(1,1),(1,-1),(2,1)].
-        heights_m:    Heights above PEC [m]. Defaults to [0, λ/8, λ/4, λ/2].
-        freq_mhz:     Reference frequency for image-theory phase [MHz].
-        n_theta:      Polar grid resolution.
-        n_phi:        Azimuthal grid resolution.
-        output_path:  If given, save figure to this path.
+        modes: List where each element is either:
+               • (l, m)              — single VSH mode
+               • [(l1,m1),(l2,m2),…] — coherent superposition of VSH modes
+                 (fields are summed before squaring, so cross-terms are included).
+                 Example: [(1,1),(1,-1)] gives a horizontal electric dipole along ŷ.
+               Defaults to [(1,0), [(1,1),(1,-1)]].
+        heights_m:   Heights above PEC [m]. Defaults to [0, λ/4, λ/2, λ].
+        freq_mhz:    Reference frequency [MHz].
+        n_theta:     Polar grid resolution.
+        n_phi:       Azimuthal grid resolution.
+        output_path: If given, save figure to this path.
 
     Returns:
         matplotlib Figure.
@@ -460,11 +460,20 @@ def plot_vsh_image_theory(modes=None, heights_m=None, freq_mhz=75.0,
     import scipy.special
 
     if modes is None:
-        modes = [(1, 0), (1, -1)]
+        modes = [(1, 0), [(1, 1), (1, -1)]]
 
     wavelength_m = 3e8 / (freq_mhz * 1e6)
     if heights_m is None:
-        heights_m = [0.0, wavelength_m / 8, wavelength_m / 4, wavelength_m / 2]
+        # Extend to λ so horizontal-dipole elevation lobes have room to split
+        heights_m = [0.0, wavelength_m / 4, wavelength_m / 2, wavelength_m]
+
+    # Normalise: each entry → list of (l,m) tuples
+    def _to_lm_list(entry):
+        if isinstance(entry, tuple) and isinstance(entry[0], int):
+            return [entry]            # single (l, m)
+        return [tuple(p) for p in entry]   # already a sequence of pairs
+
+    mode_lists = [_to_lm_list(e) for e in modes]
 
     theta = np.linspace(1e-3, np.pi / 2 - 1e-3, n_theta)
     phi   = np.linspace(0, 2 * np.pi, n_phi)
@@ -488,13 +497,28 @@ def plot_vsh_image_theory(modes=None, heights_m=None, freq_mhz=75.0,
             t2 = 0.0
         return t1 + t2
 
-    def _vsh_components(ll, mm, TH, safe_s):
+    def _single_vsh(ll, mm, TH, safe_s):
         norm = np.sqrt(ll * (ll + 1))
         M_th = -1j * mm * _ylm(ll, mm, TH, PHI) / (safe_s * norm)
         M_ph = _dYdt(ll, mm, TH, PHI) / norm
         N_th = -1j * M_ph
         N_ph =  1j * M_th
         return M_th, M_ph, N_th, N_ph
+
+    def _sum_vsh(lm_list, TH, safe_s):
+        """Coherently sum VSH fields over a list of (l,m) modes."""
+        sh = THETA.shape
+        M_th = np.zeros(sh, dtype=complex)
+        M_ph = np.zeros(sh, dtype=complex)
+        N_th = np.zeros(sh, dtype=complex)
+        N_ph = np.zeros(sh, dtype=complex)
+        for ll, mm in lm_list:
+            mt, mp, nt, np_ = _single_vsh(ll, mm, TH, safe_s)
+            M_th += mt; M_ph += mp; N_th += nt; N_ph += np_
+        return M_th, M_ph, N_th, N_ph
+
+    def _mode_label(lm_list):
+        return '+'.join(rf'{l},{m}' for l, m in lm_list)
 
     def _h_label(h):
         if h == 0:
@@ -525,9 +549,9 @@ def plot_vsh_image_theory(modes=None, heights_m=None, freq_mhz=75.0,
         ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-0.1, lim)
         ax.view_init(elev=20, azim=45)
 
-    n_h      = len(heights_m)
-    n_modes  = len(modes)
-    n_rows   = 2 * n_modes   # M row + N row per mode
+    n_h     = len(heights_m)
+    n_modes = len(mode_lists)
+    n_rows  = 2 * n_modes
     fig = plt.figure(figsize=(3.2 * n_h, 3.2 * n_rows))
     fig.suptitle(f'Image theory above PEC — {freq_mhz:.0f} MHz',
                  fontsize=13, y=1.01)
@@ -535,12 +559,13 @@ def plot_vsh_image_theory(modes=None, heights_m=None, freq_mhz=75.0,
     safe_sin_d = np.where(np.sin(THETA)     > 1e-10, np.sin(THETA),     1.0)
     safe_sin_i = np.where(np.sin(THETA_img) > 1e-10, np.sin(THETA_img), 1.0)
 
-    for row_pair, (l, m) in enumerate(modes):
-        M_th_d, M_ph_d, N_th_d, N_ph_d = _vsh_components(l, m, THETA,     safe_sin_d)
-        M_th_i, M_ph_i, N_th_i, N_ph_i = _vsh_components(l, m, THETA_img, safe_sin_i)
+    for row_pair, lm_list in enumerate(mode_lists):
+        lbl = _mode_label(lm_list)
+        M_th_d, M_ph_d, N_th_d, N_ph_d = _sum_vsh(lm_list, THETA,     safe_sin_d)
+        M_th_i, M_ph_i, N_th_i, N_ph_i = _sum_vsh(lm_list, THETA_img, safe_sin_i)
 
-        row_M = 2 * row_pair       # subplot row index for M
-        row_N = 2 * row_pair + 1   # subplot row index for N
+        row_M = 2 * row_pair
+        row_N = 2 * row_pair + 1
 
         for col, h in enumerate(heights_m):
             phase = np.exp(2j * k * h * cos_t)
@@ -552,20 +577,19 @@ def plot_vsh_image_theory(modes=None, heights_m=None, freq_mhz=75.0,
 
             ax_M = fig.add_subplot(n_rows, n_h, row_M * n_h + col + 1, projection='3d')
             _plot_upper(ax_M, B_M,
-                        title=rf'$M_{{{l},{m}}}$  {_h_label(h)}',
+                        title=rf'$M_{{{lbl}}}$  {_h_label(h)}',
                         cmap='Blues')
 
             ax_N = fig.add_subplot(n_rows, n_h, row_N * n_h + col + 1, projection='3d')
             _plot_upper(ax_N, B_N,
-                        title=rf'$N_{{{l},{m}}}$  {_h_label(h)}',
+                        title=rf'$N_{{{lbl}}}$  {_h_label(h)}',
                         cmap='Oranges')
 
-        # Row labels on the left
         y_M = 1.0 - (row_M + 0.5) / n_rows
         y_N = 1.0 - (row_N + 0.5) / n_rows
-        fig.text(0.01, y_M, rf'$M_{{{l},{m}}}$ (TE)', va='center',
+        fig.text(0.01, y_M, rf'$M_{{{lbl}}}$ (TE)', va='center',
                  rotation='vertical', fontsize=9, fontweight='bold')
-        fig.text(0.01, y_N, rf'$N_{{{l},{m}}}$ (TM)', va='center',
+        fig.text(0.01, y_N, rf'$N_{{{lbl}}}$ (TM)', va='center',
                  rotation='vertical', fontsize=9, fontweight='bold')
 
     fig.tight_layout()

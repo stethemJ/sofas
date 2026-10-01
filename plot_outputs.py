@@ -226,8 +226,7 @@ def main():
     print('  vsh_modes.png')
 
     # Image theory: beam pattern vs height for N_10
-    plot_vsh_image_theory(modes=[(1, 0), (1, -1)],
-                          output_path=os.path.join(OUTDIR, 'vsh_image_theory.png'))
+    plot_vsh_image_theory(output_path=os.path.join(OUTDIR, 'vsh_image_theory.png'))
     print('  vsh_image_theory.png')
 
     print(f'\nAll outputs written to {OUTDIR}/')
