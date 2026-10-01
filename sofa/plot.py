@@ -460,7 +460,7 @@ def plot_vsh_image_theory(modes=None, heights_m=None, freq_mhz=75.0,
     import scipy.special
 
     if modes is None:
-        modes = [(1, 0), (1, 1), (1, -1), (2, 1)]
+        modes = [(1, 0), (1, -1)]
 
     wavelength_m = 3e8 / (freq_mhz * 1e6)
     if heights_m is None:
