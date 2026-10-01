@@ -112,20 +112,25 @@ def plot_beam_3d(Btilde, basis, freq_mhz_arr, freq_indices=None, output_path=Non
     return fig
 
 
-def plot_sky_model(sky_map, nside=64, title='GSM2016 Sky Model', output_path=None):
+def plot_sky_model(sky_map, nside=64, title='GSM2016 Sky Model',
+                   log_scale=True, output_path=None):
     """Mollweide projection of a HEALPix sky temperature map.
 
     Args:
         sky_map:     (n_pix,) HEALPix map [K].
         nside:       HEALPix nside parameter.
         title:       Figure title string.
+        log_scale:   Use logarithmic colour stretch (default True). Recommended
+                     for sky maps — the Galactic plane dynamic range (~100:1)
+                     makes a linear scale collapse everything else to the floor.
         output_path: If given, save figure to this path.
 
     Returns:
         matplotlib Figure.
     """
     fig = plt.figure(figsize=(10, 5))
-    healpy.mollview(sky_map, title=title, fig=fig.number, unit='K')
+    norm = 'log' if log_scale else None
+    healpy.mollview(sky_map, title=title, fig=fig.number, unit='K', norm=norm)
     if output_path is not None:
         fig.savefig(output_path, dpi=150, bbox_inches='tight')
     return fig
