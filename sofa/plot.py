@@ -318,7 +318,7 @@ def plot_signal_recovery(freq_mhz, T_obs, T_fg_fit, S_21_true,
     return fig
 
 
-def plot_vsh_modes(modes=None, n_theta=80, n_phi=120, output_path=None):
+def plot_vsh_modes(modes=None, n_theta=120, n_phi=240, output_path=None):
     """3D polar surfaces for a selection of VSH modes (M and N).
 
     For each mode (l, m) the radius at each direction (θ, φ) is the magnitude
@@ -351,10 +351,7 @@ def plot_vsh_modes(modes=None, n_theta=80, n_phi=120, output_path=None):
             (3, 1),   # mixed, higher order
         ]
 
-    # Avoid the exact poles: polar degeneracy (all phi converge to one point)
-    # causes degenerate thin patches that the painter's-algorithm depth sorter
-    # can't order, producing spikes. 0.08 rad ≈ 4.6° clearance is sufficient.
-    theta = np.linspace(0.08, np.pi - 0.08, n_theta)
+    theta = np.linspace(1e-3, np.pi - 1e-3, n_theta)
     phi   = np.linspace(0, 2 * np.pi, n_phi)
     THETA, PHI = np.meshgrid(theta, phi, indexing='ij')  # (n_theta, n_phi)
 
@@ -396,7 +393,7 @@ def plot_vsh_modes(modes=None, n_theta=80, n_phi=120, output_path=None):
         z = r_norm * np.cos(THETA)
 
         surf = ax.plot_surface(x, y, z, facecolors=plt.colormaps[cmap](r_norm),
-                               rstride=2, cstride=2, linewidth=0,
+                               rstride=1, cstride=1, linewidth=0,
                                antialiased=False, shade=False)
         ax.set_title(title, fontsize=9, pad=2)
         ax.set_axis_off()
@@ -436,7 +433,7 @@ def plot_vsh_modes(modes=None, n_theta=80, n_phi=120, output_path=None):
 
 
 def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
-                           n_theta=80, n_phi=120, output_path=None):
+                           n_theta=120, n_phi=240, output_path=None):
     """3D polar surfaces showing beam power modified by image theory at varying heights.
 
     For a single VSH mode (l, m), shows the total power pattern
@@ -467,10 +464,7 @@ def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
     if heights_m is None:
         heights_m = [0.0, wavelength_m / 8, wavelength_m / 4, wavelength_m / 2]
 
-    # Upper hemisphere: avoid the zenith pole (θ=0) where all phi lines converge
-    # to a single 3D point, producing degenerate patches and depth-sort spikes.
-    # 0.08 rad ≈ 4.6° clearance is well within the beam's structure.
-    theta = np.linspace(0.08, np.pi / 2 - 0.08, n_theta)
+    theta = np.linspace(1e-3, np.pi / 2 - 1e-3, n_theta)
     phi   = np.linspace(0, 2 * np.pi, n_phi)
     THETA, PHI = np.meshgrid(theta, phi, indexing='ij')   # (n_theta, n_phi)
 
@@ -542,7 +536,7 @@ def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
                 np.zeros(60), color='k', lw=0.8, alpha=0.4)
         ax.plot_surface(x, y, z,
                         facecolors=plt.colormaps[cmap](r_norm),
-                        rstride=2, cstride=2, linewidth=0,
+                        rstride=1, cstride=1, linewidth=0,
                         antialiased=False, shade=False)
         ax.set_title(title, fontsize=8, pad=2)
         ax.set_axis_off()
