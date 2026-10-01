@@ -159,6 +159,80 @@ def plot_spectral_index_map(beta_bin_map, nside=64, output_path=None):
     return fig
 
 
+def plot_spectral_index_bins(beta_bin_map, sky_map_408=None, output_path=None):
+    """Mollweide map of spectral-index decile regions overlaid on sky structure.
+
+    Each pixel is coloured by its decile bin (10 discrete colours).  If a
+    408 MHz sky map is provided, log-brightness contours are drawn in black on
+    top so you can see the Galactic morphology underneath the bin regions.
+
+    Args:
+        beta_bin_map: (n_pix,) HEALPix map of binned spectral indices (10 unique values).
+        sky_map_408:  (n_pix,) HEALPix sky temperature map at 408 MHz [K], or None.
+        output_path:  If given, save figure to this path.
+
+    Returns:
+        matplotlib Figure.
+    """
+    # Integer bin index 0..9 and the corresponding median beta per bin
+    unique_betas = np.sort(np.unique(beta_bin_map))
+    n_bins = len(unique_betas)
+    bin_index = np.searchsorted(unique_betas, beta_bin_map).astype(float)
+
+    # 10-colour discrete palette (cool→warm = steep→flat spectral index)
+    palette = plt.colormaps['RdYlBu_r'](np.linspace(0.05, 0.95, n_bins))
+    disc_cmap = mcolors.ListedColormap(palette, name='sofa_bins')
+
+    # 2D Mollweide projections via healpy (returns masked arrays)
+    proj_bins = healpy.mollview(bin_index, return_projected_map=True)
+    plt.close()
+
+    fig, ax = plt.subplots(figsize=(13, 6.5))
+    fig.patch.set_facecolor('white')
+
+    # --- Bin region fill ---
+    bins_filled = np.ma.filled(proj_bins, np.nan)
+    im = ax.imshow(
+        bins_filled,
+        cmap=disc_cmap,
+        vmin=-0.5, vmax=n_bins - 0.5,
+        origin='upper',
+        aspect='auto',
+        interpolation='nearest',
+    )
+
+    # --- Galaxy contours from 408 MHz sky brightness ---
+    if sky_map_408 is not None:
+        log_sky = np.log10(np.clip(sky_map_408, 1.0, None))
+        proj_sky = healpy.mollview(log_sky, return_projected_map=True)
+        plt.close()
+        sky_filled = np.ma.filled(proj_sky, np.nan)
+        # 7 contour levels spanning 10th–90th percentile of valid pixels
+        valid = sky_filled[np.isfinite(sky_filled)]
+        levels = np.linspace(np.percentile(valid, 10),
+                             np.percentile(valid, 90), 7)
+        ax.contour(sky_filled, levels=levels,
+                   colors='k', linewidths=0.6, alpha=0.45)
+
+    ax.set_axis_off()
+    ax.set_title('Spectral-index decile regions', fontsize=13, pad=8)
+
+    # --- Discrete colorbar with β labels ---
+    bounds = np.arange(n_bins + 1) - 0.5
+    cb_norm = mcolors.BoundaryNorm(bounds, disc_cmap.N)
+    sm = plt.cm.ScalarMappable(cmap=disc_cmap, norm=cb_norm)
+    sm.set_array([])
+    cb = fig.colorbar(sm, ax=ax, ticks=np.arange(n_bins),
+                      fraction=0.025, pad=0.02,
+                      label='Spectral index  β (median per bin)')
+    cb.ax.set_yticklabels([f'{b:+.3f}' for b in unique_betas], fontsize=9)
+
+    fig.tight_layout()
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    return fig
+
+
 def plot_tant_waterfall(T_ant, freq_mhz, output_path=None):
     """Waterfall (imshow) of antenna temperature vs frequency and LST.
 

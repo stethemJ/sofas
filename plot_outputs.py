@@ -31,6 +31,7 @@ from sofa.plot import (
     plot_posterior_corner,
     plot_sky_model,
     plot_spectral_index_map,
+    plot_spectral_index_bins,
     plot_vsh_modes,
     plot_vsh_image_theory,
 )
@@ -212,6 +213,11 @@ def main():
             beta_map, nside=NSIDE,
             output_path=os.path.join(OUTDIR, 'spectral_index.png'))
         print('  spectral_index.png')
+
+        fig_bins = plot_spectral_index_bins(
+            beta_map, sky_map_408=sky_408,
+            output_path=os.path.join(OUTDIR, 'spectral_index_bins.png'))
+        print('  spectral_index_bins.png')
     else:
         print('  (sky model plots skipped — pygdsm not available)')
 
