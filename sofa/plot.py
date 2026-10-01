@@ -343,12 +343,14 @@ def plot_vsh_modes(modes=None, n_theta=120, n_phi=240, output_path=None):
 
     if modes is None:
         modes = [
-            (1, 0),   # dipole, axisymmetric
-            (1, 1),   # dipole, m=l
-            (2, 0),   # quadrupole, axisymmetric
-            (2, 1),   # mixed
-            (2, 2),   # quadrupole, m=l
-            (3, 1),   # mixed, higher order
+            (1,  0),   # dipole, axisymmetric
+            (1,  1),   # dipole, m=+l
+            (1, -1),   # dipole, m=-l
+            (2,  0),   # quadrupole, axisymmetric
+            (2,  1),   # quadrupole, mixed
+            (2, -2),   # quadrupole, m=-l
+            (3,  1),   # octupole, mixed
+            (3, -3),   # octupole, m=-l
         ]
 
     theta = np.linspace(1e-3, np.pi - 1e-3, n_theta)
