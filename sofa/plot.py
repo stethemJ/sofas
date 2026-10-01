@@ -4,6 +4,9 @@ Provides corner plots, 3D beam visualization, sky maps, T_ant waterfall,
 signal recovery diagnostics, and VSH mode polar surfaces.
 """
 
+import os
+import pathlib
+
 import numpy as np
 import healpy
 import corner
@@ -11,6 +14,12 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 — registers 3d projection
 import plotly.graph_objects as go
+
+# Apply sofa.mplstyle — look next to the package root (one level up from sofa/)
+_style_path = pathlib.Path(__file__).parent.parent / 'sofa.mplstyle'
+if _style_path.exists():
+    plt.style.use(str(_style_path))
+
 
 
 def plot_posterior_corner(samples, labels=None, output_path=None):
@@ -297,8 +306,9 @@ def plot_vsh_modes(modes=None, n_theta=120, n_phi=240, output_path=None):
 
     def _polar_surface(ax, r, title, cmap='viridis'):
         """Plot a 3D polar surface with radius r(theta,phi)."""
-        # Normalise so the plot fits in a unit sphere for easy comparison
-        r_norm = r / r.max() if r.max() > 0 else r
+        peak = r.max()
+        median = np.median(r)
+        r_norm = r / peak if (peak > 0 and peak > 1e-6 * max(median, 1e-30)) else np.zeros_like(r)
 
         x = r_norm * np.sin(THETA) * np.cos(PHI)
         y = r_norm * np.sin(THETA) * np.sin(PHI)
@@ -434,7 +444,12 @@ def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
         return f'h = {h:.2f} m'
 
     def _plot_upper(ax, r, title, cmap):
-        r_norm = r / r.max() if r.max() > 0 else r
+        # Use relative threshold: treat pattern as zero if peak < 1e-6 × median.
+        # This avoids amplifying floating-point noise when TE/TM destructively
+        # cancels (e.g. M_10 at h=0 where image term exactly cancels direct term).
+        peak = r.max()
+        median = np.median(r)
+        r_norm = r / peak if (peak > 0 and peak > 1e-6 * max(median, 1e-30)) else np.zeros_like(r)
         x = r_norm * np.sin(THETA) * np.cos(PHI)
         y = r_norm * np.sin(THETA) * np.sin(PHI)
         z = r_norm * np.cos(THETA)
