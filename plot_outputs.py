@@ -31,6 +31,8 @@ from sofa.plot import (
     plot_posterior_corner,
     plot_sky_model,
     plot_spectral_index_map,
+    plot_vsh_modes,
+    plot_vsh_image_theory,
 )
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -212,6 +214,15 @@ def main():
         print('  spectral_index.png')
     else:
         print('  (sky model plots skipped — pygdsm not available)')
+
+    # VSH mode polar surfaces
+    plot_vsh_modes(output_path=os.path.join(OUTDIR, 'vsh_modes.png'))
+    print('  vsh_modes.png')
+
+    # Image theory: beam pattern vs height for N_10
+    plot_vsh_image_theory(l=1, m=0,
+                          output_path=os.path.join(OUTDIR, 'vsh_image_theory.png'))
+    print('  vsh_image_theory.png')
 
     print(f'\nAll outputs written to {OUTDIR}/')
 

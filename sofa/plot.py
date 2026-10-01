@@ -1,13 +1,15 @@
 """Visualization functions for the SOFA pipeline.
 
 Provides corner plots, 3D beam visualization, sky maps, T_ant waterfall,
-and signal recovery diagnostics.
+signal recovery diagnostics, and VSH mode polar surfaces.
 """
 
 import numpy as np
 import healpy
 import corner
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 — registers 3d projection
 import plotly.graph_objects as go
 
 
@@ -221,6 +223,257 @@ def plot_signal_recovery(freq_mhz, T_obs, T_fg_fit, S_21_true,
     ax_bot.axhline(0, color='black', lw=0.8, linestyle='--')
     ax_bot.set_xlabel('Frequency [MHz]')
     ax_bot.set_ylabel(res_label)
+
+    fig.tight_layout()
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    return fig
+
+
+def plot_vsh_modes(modes=None, n_theta=120, n_phi=240, output_path=None):
+    """3D polar surfaces for a selection of VSH modes (M and N).
+
+    For each mode (l, m) the radius at each direction (θ, φ) is the magnitude
+    of the VSH vector:
+        r(θ,φ) = |M_lm(θ,φ)| = sqrt(|M_theta|² + |M_phi|²)
+
+    The surface is colored by the same magnitude so structure is visible even
+    where the deformation from a sphere is small.  M modes are shown on the
+    left column, N modes on the right.
+
+    Args:
+        modes:       List of (l, m) tuples to display.  Defaults to a
+                     representative selection covering low orders and mixed orders.
+        n_theta:     Number of polar-angle grid points (default 120).
+        n_phi:       Number of azimuthal grid points (default 240).
+        output_path: If given, save figure to this path.
+
+    Returns:
+        matplotlib Figure.
+    """
+    import scipy.special
+
+    if modes is None:
+        modes = [
+            (1, 0),   # dipole, axisymmetric
+            (1, 1),   # dipole, m=l
+            (2, 0),   # quadrupole, axisymmetric
+            (2, 1),   # mixed
+            (2, 2),   # quadrupole, m=l
+            (3, 1),   # mixed, higher order
+        ]
+
+    # Fine grid on full sphere
+    theta = np.linspace(1e-3, np.pi - 1e-3, n_theta)   # avoid exact poles
+    phi   = np.linspace(0, 2 * np.pi, n_phi)
+    THETA, PHI = np.meshgrid(theta, phi, indexing='ij')  # (n_theta, n_phi)
+
+    sin_t  = np.sin(THETA)
+    safe_sin = np.where(sin_t > 1e-10, sin_t, 1.0)
+
+    def _vsh_magnitude(l, m):
+        """Return |M_lm|(theta,phi) and |N_lm|(theta,phi), each (n_theta, n_phi)."""
+        Y    = scipy.special.sph_harm_y(l, m, THETA, PHI)
+        # dY/dtheta via L+ recurrence
+        term1 = np.where(np.abs(sin_t) > 1e-10,
+                         m / np.tan(THETA) * Y, 0.0 + 0.0j)
+        if m < l:
+            term2 = (np.sqrt((l - m) * (l + m + 1))
+                     * np.exp(-1j * PHI)
+                     * scipy.special.sph_harm_y(l, m + 1, THETA, PHI))
+        else:
+            term2 = 0.0
+        dYdt = term1 + term2
+
+        norm    = np.sqrt(l * (l + 1))
+        M_theta = -1j * m * Y / (safe_sin * norm)
+        M_phi   = dYdt / norm
+        N_theta = -1j * M_phi
+        N_phi   =  1j * M_theta
+
+        mag_M = np.sqrt(np.abs(M_theta)**2 + np.abs(M_phi)**2)
+        mag_N = np.sqrt(np.abs(N_theta)**2 + np.abs(N_phi)**2)
+        return mag_M.real, mag_N.real
+
+    def _polar_surface(ax, r, title, cmap='viridis'):
+        """Plot a 3D polar surface with radius r(theta,phi)."""
+        # Normalise so the plot fits in a unit sphere for easy comparison
+        r_norm = r / r.max() if r.max() > 0 else r
+
+        x = r_norm * np.sin(THETA) * np.cos(PHI)
+        y = r_norm * np.sin(THETA) * np.sin(PHI)
+        z = r_norm * np.cos(THETA)
+
+        surf = ax.plot_surface(x, y, z, facecolors=plt.colormaps[cmap](r_norm),
+                               rstride=1, cstride=1, linewidth=0,
+                               antialiased=False, shade=False)
+        ax.set_title(title, fontsize=9, pad=2)
+        ax.set_axis_off()
+        # Equal aspect ratio
+        lim = 0.8
+        ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-lim, lim)
+        ax.view_init(elev=25, azim=45)
+        return surf
+
+    n_modes = len(modes)
+    fig = plt.figure(figsize=(4 * n_modes, 8))
+    fig.suptitle('VSH Modes: radius = |VSH(θ,φ)|', fontsize=13, y=1.01)
+
+    for col, (l, m) in enumerate(modes):
+        mag_M, mag_N = _vsh_magnitude(l, m)
+
+        ax_M = fig.add_subplot(2, n_modes, col + 1, projection='3d')
+        _polar_surface(ax_M, mag_M,
+                       title=rf'$M_{{{l},{m}}}$  (TE)',
+                       cmap='Blues')
+
+        ax_N = fig.add_subplot(2, n_modes, n_modes + col + 1, projection='3d')
+        _polar_surface(ax_N, mag_N,
+                       title=rf'$N_{{{l},{m}}}$  (TM)',
+                       cmap='Oranges')
+
+    # Row labels
+    fig.text(0.01, 0.75, 'M modes (TE)', va='center', rotation='vertical',
+             fontsize=11, fontweight='bold')
+    fig.text(0.01, 0.25, 'N modes (TM)', va='center', rotation='vertical',
+             fontsize=11, fontweight='bold')
+
+    fig.tight_layout()
+    if output_path is not None:
+        fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    return fig
+
+
+def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
+                           n_theta=120, n_phi=240, output_path=None):
+    """3D polar surfaces showing beam power modified by image theory at varying heights.
+
+    For a single VSH mode (l, m), shows the total power pattern
+        B(θ,φ) = |E_tot_theta|² + |E_tot_phi|²
+    at several heights h above a PEC ground plane (upper hemisphere only).
+    The radius at each (θ,φ) is B/B_max so lobe shape is the focus.
+    Top row: M mode; bottom row: N mode.
+
+    Image theory:
+        E_tot_theta = E_theta + E_img_theta * exp(2i k h cosθ)   R_theta = +1
+        E_tot_phi   = E_phi   - E_img_phi   * exp(2i k h cosθ)   R_phi   = -1
+    where E_img is the VSH evaluated at (π−θ, φ).
+
+    Args:
+        l, m:         VSH mode (default l=1, m=0 — the N_10 VED mode).
+        heights_m:    Heights above PEC [m]. Defaults to [0, λ/8, λ/4, λ/2].
+        freq_mhz:     Reference frequency for image-theory phase [MHz].
+        n_theta:      Polar grid resolution.
+        n_phi:        Azimuthal grid resolution.
+        output_path:  If given, save figure to this path.
+
+    Returns:
+        matplotlib Figure.
+    """
+    import scipy.special
+
+    wavelength_m = 3e8 / (freq_mhz * 1e6)
+    if heights_m is None:
+        heights_m = [0.0, wavelength_m / 8, wavelength_m / 4, wavelength_m / 2]
+
+    # Upper hemisphere: θ ∈ (0, π/2)
+    theta = np.linspace(1e-3, np.pi / 2 - 1e-3, n_theta)
+    phi   = np.linspace(0, 2 * np.pi, n_phi)
+    THETA, PHI = np.meshgrid(theta, phi, indexing='ij')   # (n_theta, n_phi)
+
+    sin_t      = np.sin(THETA)
+    safe_sin   = np.where(sin_t > 1e-10, sin_t, 1.0)
+    cos_t      = np.cos(THETA)
+    THETA_img  = np.pi - THETA                             # reflected polar angle
+    safe_sin_i = np.where(np.abs(np.sin(THETA_img)) > 1e-10,
+                          np.sin(THETA_img), 1.0)
+    k = 2 * np.pi * freq_mhz * 1e6 / 3e8
+
+    def _ylm(ll, mm, TH, PH):
+        return scipy.special.sph_harm_y(ll, mm, TH, PH)
+
+    def _dYdt(ll, mm, TH, PH):
+        Y  = _ylm(ll, mm, TH, PH)
+        t1 = np.where(np.abs(np.sin(TH)) > 1e-10,
+                      mm / np.tan(TH) * Y, 0.0 + 0.0j)
+        if mm < ll:
+            t2 = (np.sqrt((ll - mm) * (ll + mm + 1))
+                  * np.exp(-1j * PH)
+                  * _ylm(ll, mm + 1, TH, PH))
+        else:
+            t2 = 0.0
+        return t1 + t2
+
+    norm = np.sqrt(l * (l + 1))
+
+    # Direct VSH on upper hemisphere
+    M_th_d = -1j * m * _ylm(l, m, THETA, PHI)     / (safe_sin * norm)
+    M_ph_d =             _dYdt(l, m, THETA, PHI)   / norm
+    N_th_d = -1j * M_ph_d
+    N_ph_d =  1j * M_th_d
+
+    # Image VSH on reflected (lower) hemisphere pixels
+    M_th_i = -1j * m * _ylm(l, m, THETA_img, PHI)   / (safe_sin_i * norm)
+    M_ph_i =             _dYdt(l, m, THETA_img, PHI) / norm
+    N_th_i = -1j * M_ph_i
+    N_ph_i =  1j * M_th_i
+
+    n_h = len(heights_m)
+    fig = plt.figure(figsize=(3.5 * n_h, 8))
+    fig.suptitle(
+        rf'Image theory: $M_{{{l},{m}}}$ (top) & $N_{{{l},{m}}}$ (bottom)'
+        f' at {freq_mhz:.0f} MHz',
+        fontsize=12, y=1.01)
+
+    def _h_label(h):
+        if h == 0:
+            return 'h = 0'
+        ratio = wavelength_m / h
+        if abs(ratio - round(ratio)) < 0.05:
+            return rf'h = λ/{round(ratio):.0f}'
+        return f'h = {h:.2f} m'
+
+    def _plot_upper(ax, r, title, cmap):
+        r_norm = r / r.max() if r.max() > 0 else r
+        x = r_norm * np.sin(THETA) * np.cos(PHI)
+        y = r_norm * np.sin(THETA) * np.sin(PHI)
+        z = r_norm * np.cos(THETA)
+        # Ground plane indicator
+        phi_disc = np.linspace(0, 2 * np.pi, 60)
+        ax.plot(0.9 * np.cos(phi_disc), 0.9 * np.sin(phi_disc),
+                np.zeros(60), color='k', lw=0.8, alpha=0.4)
+        ax.plot_surface(x, y, z,
+                        facecolors=plt.colormaps[cmap](r_norm),
+                        rstride=1, cstride=1, linewidth=0,
+                        antialiased=False, shade=False)
+        ax.set_title(title, fontsize=8, pad=2)
+        ax.set_axis_off()
+        lim = 0.85
+        ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-0.1, lim)
+        ax.view_init(elev=20, azim=45)
+
+    for col, h in enumerate(heights_m):
+        phase = np.exp(2j * k * h * cos_t)
+
+        B_M = (np.abs(M_th_d + M_th_i * phase)**2
+             + np.abs(M_ph_d - M_ph_i * phase)**2)
+        B_N = (np.abs(N_th_d + N_th_i * phase)**2
+             + np.abs(N_ph_d - N_ph_i * phase)**2)
+
+        ax_M = fig.add_subplot(2, n_h, col + 1, projection='3d')
+        _plot_upper(ax_M, B_M,
+                    title=rf'$M_{{{l},{m}}}$  {_h_label(h)}',
+                    cmap='Blues')
+
+        ax_N = fig.add_subplot(2, n_h, n_h + col + 1, projection='3d')
+        _plot_upper(ax_N, B_N,
+                    title=rf'$N_{{{l},{m}}}$  {_h_label(h)}',
+                    cmap='Oranges')
+
+    fig.text(0.01, 0.75, 'M mode (TE)', va='center', rotation='vertical',
+             fontsize=10, fontweight='bold')
+    fig.text(0.01, 0.25, 'N mode (TM)', va='center', rotation='vertical',
+             fontsize=10, fontweight='bold')
 
     fig.tight_layout()
     if output_path is not None:
