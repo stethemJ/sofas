@@ -1,0 +1,95 @@
+## ─────────────────────────────────────────────
+##  sciplot.mplstyle
+##  Classic gnuplot/ROOT style — Comfortaa font
+## ─────────────────────────────────────────────
+
+## ── FONT ──────────────────────────────────────
+font.family           : Comfortaa
+font.size             : 13
+axes.titlesize        : 14
+axes.labelsize        : 13
+xtick.labelsize       : 11
+ytick.labelsize       : 11
+legend.fontsize       : 8
+figure.titlesize      : 15
+
+## ── FIGURE ────────────────────────────────────
+figure.figsize        : 7, 5
+figure.dpi            : 150
+figure.facecolor      : white
+figure.edgecolor      : white
+
+## ── AXES ──────────────────────────────────────
+axes.facecolor        : white
+axes.edgecolor        : black
+axes.linewidth        : 1.2
+axes.labelcolor       : black
+axes.titlecolor       : black
+axes.titlepad         : 10
+axes.labelpad         : 6
+axes.spines.top       : True
+axes.spines.right     : True
+axes.grid             : False
+axes.axisbelow        : True
+
+## ── GRID (off by default, gnuplot/ROOT style) ──
+grid.color            : cccccc
+grid.linestyle        : --
+grid.linewidth        : 0.5
+grid.alpha            : 0.7
+
+## ── TICKS (inward, mirrored — classic HEP/astro)
+xtick.direction       : in
+ytick.direction       : in
+xtick.top             : True
+ytick.right           : True
+xtick.major.size      : 6
+xtick.minor.size      : 3
+ytick.major.size      : 6
+ytick.minor.size      : 3
+xtick.major.width     : 1.2
+ytick.major.width     : 1.2
+xtick.minor.width     : 0.8
+ytick.minor.width     : 0.8
+xtick.color           : black
+ytick.color           : black
+xtick.minor.visible   : True
+ytick.minor.visible   : True
+
+## ── COLOR CYCLE (gnuplot/ROOT classic palette) ─
+## black, red, blue, dark green, magenta, cyan, orange, dark violet
+axes.prop_cycle : cycler('color', ['000000', 'cc0000', '0044cc', '007700', 'cc00cc', '008888', 'dd7700', '7700cc'])
+
+## ── LINES ─────────────────────────────────────
+lines.linewidth       : 1.6
+lines.markersize      : 6
+lines.markeredgewidth : 0.8
+lines.markeredgecolor : auto
+
+## ── SCATTER / ERROR BARS ──────────────────────
+scatter.marker        : o
+errorbar.capsize      : 3
+
+## ── LEGEND ────────────────────────────────────
+legend.frameon        : True
+legend.framealpha     : 1.0
+legend.facecolor      : white
+legend.edgecolor      : black
+legend.borderpad      : 0.5
+legend.handlelength   : 2.0
+legend.handleheight   : 0.8
+legend.loc            : best
+
+## ── COLORMAP ──────────────────────────────────
+image.cmap            : viridis
+
+## ── SAVING ────────────────────────────────────
+savefig.dpi           : 300
+savefig.facecolor     : white
+savefig.edgecolor     : white
+savefig.bbox          : tight
+savefig.pad_inches    : 0.1
+savefig.format        : pdf
+
+## ── MATH TEXT ─────────────────────────────────
+mathtext.fontset      : stix

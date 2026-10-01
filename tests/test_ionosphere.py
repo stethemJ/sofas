@@ -225,3 +225,85 @@ def test_plasma_frequency_formula():
     nu_p_expected = 8.98 * np.sqrt(n_e_max)
     assert abs(nu_p_expected - 2.843e6) < 1e4, \
         f"Plasma frequency formula gives {nu_p_expected:.3e} Hz, expected ~2.843 MHz"
+
+
+# ---------------------------------------------------------------------------
+# Directional refraction tests — verifies the physics, not just the formula
+# ---------------------------------------------------------------------------
+
+def test_refraction_moves_pixels_toward_zenith():
+    """Nonzero TEC with a gradient sky: refraction pulls upper-hemisphere
+    pixels toward zenith, so each refracted pixel samples a sky value closer
+    to zenith than the original pixel direction.
+
+    Sky model: T ∝ cos(theta) (bright near zenith, faint near horizon).
+    Refraction decreases theta → samples brighter (larger cos) value → result > original.
+    """
+    theta_all, phi_all = healpy.pix2ang(NSIDE, np.arange(N_PIX))
+    # Sky brightest at zenith (theta=0), fading to zero at horizon
+    sky = np.maximum(np.cos(theta_all), 0.0) * 3000.0
+
+    result = apply_ionospheric_correction(
+        sky, freq_hz=10e6, tec_zen_tecu=5.0,
+        n_e_max=1e8, nside=NSIDE
+    )
+
+    upper = theta_all < np.pi / 2
+    # Exclude pixels very close to zenith (theta < 5 deg) — delta_rho * sin(theta) ~ 0 there
+    mid_upper = upper & (theta_all > np.deg2rad(5))
+
+    # Refracted result must be >= original for a zenith-bright sky
+    # (pixels pulled toward zenith sample higher T); allow small interpolation error
+    mean_diff = np.mean(result[mid_upper] - sky[mid_upper])
+    assert mean_diff > 0, (
+        f"Refraction should shift pixels toward zenith (brighter), "
+        f"but mean diff = {mean_diff:.2f} K"
+    )
+
+
+def test_refraction_increases_with_tec():
+    """Larger TEC → larger refraction angle → larger displacement of sky map.
+
+    Measured as rms difference from the uncorrected sky over upper hemisphere.
+    """
+    theta_all, _ = healpy.pix2ang(NSIDE, np.arange(N_PIX))
+    sky = np.maximum(np.cos(theta_all), 0.0) * 3000.0 + 500.0 * np.sin(theta_all)
+
+    upper = theta_all < np.pi / 2
+
+    result_low  = apply_ionospheric_correction(sky, freq_hz=20e6, tec_zen_tecu=1.0,
+                                               n_e_max=1e8, nside=NSIDE)
+    result_high = apply_ionospheric_correction(sky, freq_hz=20e6, tec_zen_tecu=10.0,
+                                               n_e_max=1e8, nside=NSIDE)
+
+    rms_low  = np.sqrt(np.mean((result_low[upper]  - sky[upper]) ** 2))
+    rms_high = np.sqrt(np.mean((result_high[upper] - sky[upper]) ** 2))
+
+    assert rms_high > rms_low, (
+        f"Higher TEC should cause larger sky displacement: "
+        f"rms_low={rms_low:.2f} K, rms_high={rms_high:.2f} K"
+    )
+
+
+def test_refraction_decreases_with_frequency():
+    """Higher frequency → smaller refraction (1/ν² dependence).
+
+    Same TEC, two frequencies: lower ν should displace the sky more.
+    """
+    theta_all, _ = healpy.pix2ang(NSIDE, np.arange(N_PIX))
+    sky = np.maximum(np.cos(theta_all), 0.0) * 3000.0 + 500.0 * np.sin(theta_all)
+
+    upper = theta_all < np.pi / 2
+
+    result_lo_nu = apply_ionospheric_correction(sky, freq_hz=10e6,  tec_zen_tecu=5.0,
+                                                n_e_max=1e8, nside=NSIDE)
+    result_hi_nu = apply_ionospheric_correction(sky, freq_hz=100e6, tec_zen_tecu=5.0,
+                                                n_e_max=1e8, nside=NSIDE)
+
+    rms_lo = np.sqrt(np.mean((result_lo_nu[upper] - sky[upper]) ** 2))
+    rms_hi = np.sqrt(np.mean((result_hi_nu[upper] - sky[upper]) ** 2))
+
+    assert rms_lo > rms_hi, (
+        f"Lower frequency should cause larger refraction: "
+        f"rms_10MHz={rms_lo:.2f} K, rms_100MHz={rms_hi:.4f} K"
+    )

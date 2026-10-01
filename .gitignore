@@ -1,3 +1,6 @@
+.DS_Store
+outputs/
+/__init__.py
 __pycache__/
 *.py[cod]
 *.egg-info/
