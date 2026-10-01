@@ -159,5 +159,8 @@ def sky_temperature(A, beta_bin, C, freq_mhz, freq_ref_mhz=408.0):
     -------
     T : ndarray, shape (n_pix,) [K]
     """
+    A        = np.asarray(A,        dtype=float)
+    beta_bin = np.asarray(beta_bin, dtype=float)
+    C        = np.asarray(C,        dtype=float)
     x = np.log(freq_mhz / freq_ref_mhz)
     return A * (freq_mhz / freq_ref_mhz) ** beta_bin * np.exp(C * x ** 2)
