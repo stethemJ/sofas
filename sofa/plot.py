@@ -434,23 +434,20 @@ def plot_vsh_modes(modes=None, n_theta=120, n_phi=240, output_path=None):
     return fig
 
 
-def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
+def plot_vsh_image_theory(modes=None, heights_m=None, freq_mhz=75.0,
                            n_theta=120, n_phi=240, output_path=None):
     """3D polar surfaces showing beam power modified by image theory at varying heights.
 
-    For a single VSH mode (l, m), shows the total power pattern
-        B(θ,φ) = |E_tot_theta|² + |E_tot_phi|²
-    at several heights h above a PEC ground plane (upper hemisphere only).
-    The radius at each (θ,φ) is B/B_max so lobe shape is the focus.
-    Top row: M mode; bottom row: N mode.
+    For each VSH mode (l, m), shows B(θ,φ) = |E_tot_theta|² + |E_tot_phi|²
+    at several heights above a PEC ground plane (upper hemisphere only).
+    Layout: pairs of rows (M top, N bottom) per mode; columns = heights.
 
     Image theory:
         E_tot_theta = E_theta + E_img_theta * exp(2i k h cosθ)   R_theta = +1
         E_tot_phi   = E_phi   - E_img_phi   * exp(2i k h cosθ)   R_phi   = -1
-    where E_img is the VSH evaluated at (π−θ, φ).
 
     Args:
-        l, m:         VSH mode (default l=1, m=0 — the N_10 VED mode).
+        modes:        List of (l, m) tuples. Defaults to [(1,0),(1,1),(1,-1),(2,1)].
         heights_m:    Heights above PEC [m]. Defaults to [0, λ/8, λ/4, λ/2].
         freq_mhz:     Reference frequency for image-theory phase [MHz].
         n_theta:      Polar grid resolution.
@@ -462,20 +459,18 @@ def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
     """
     import scipy.special
 
+    if modes is None:
+        modes = [(1, 0), (1, 1), (1, -1), (2, 1)]
+
     wavelength_m = 3e8 / (freq_mhz * 1e6)
     if heights_m is None:
         heights_m = [0.0, wavelength_m / 8, wavelength_m / 4, wavelength_m / 2]
 
     theta = np.linspace(1e-3, np.pi / 2 - 1e-3, n_theta)
     phi   = np.linspace(0, 2 * np.pi, n_phi)
-    THETA, PHI = np.meshgrid(theta, phi, indexing='ij')   # (n_theta, n_phi)
-
-    sin_t      = np.sin(THETA)
-    safe_sin   = np.where(sin_t > 1e-10, sin_t, 1.0)
-    cos_t      = np.cos(THETA)
-    THETA_img  = np.pi - THETA                             # reflected polar angle
-    safe_sin_i = np.where(np.abs(np.sin(THETA_img)) > 1e-10,
-                          np.sin(THETA_img), 1.0)
+    THETA, PHI = np.meshgrid(theta, phi, indexing='ij')
+    cos_t     = np.cos(THETA)
+    THETA_img = np.pi - THETA
     k = 2 * np.pi * freq_mhz * 1e6 / 3e8
 
     def _ylm(ll, mm, TH, PH):
@@ -493,26 +488,13 @@ def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
             t2 = 0.0
         return t1 + t2
 
-    norm = np.sqrt(l * (l + 1))
-
-    # Direct VSH on upper hemisphere
-    M_th_d = -1j * m * _ylm(l, m, THETA, PHI)     / (safe_sin * norm)
-    M_ph_d =             _dYdt(l, m, THETA, PHI)   / norm
-    N_th_d = -1j * M_ph_d
-    N_ph_d =  1j * M_th_d
-
-    # Image VSH on reflected (lower) hemisphere pixels
-    M_th_i = -1j * m * _ylm(l, m, THETA_img, PHI)   / (safe_sin_i * norm)
-    M_ph_i =             _dYdt(l, m, THETA_img, PHI) / norm
-    N_th_i = -1j * M_ph_i
-    N_ph_i =  1j * M_th_i
-
-    n_h = len(heights_m)
-    fig = plt.figure(figsize=(3.5 * n_h, 8))
-    fig.suptitle(
-        rf'Image theory: $M_{{{l},{m}}}$ (top) & $N_{{{l},{m}}}$ (bottom)'
-        f' at {freq_mhz:.0f} MHz',
-        fontsize=12, y=1.01)
+    def _vsh_components(ll, mm, TH, safe_s):
+        norm = np.sqrt(ll * (ll + 1))
+        M_th = -1j * mm * _ylm(ll, mm, TH, PHI) / (safe_s * norm)
+        M_ph = _dYdt(ll, mm, TH, PHI) / norm
+        N_th = -1j * M_ph
+        N_ph =  1j * M_th
+        return M_th, M_ph, N_th, N_ph
 
     def _h_label(h):
         if h == 0:
@@ -523,16 +505,13 @@ def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
         return f'h = {h:.2f} m'
 
     def _plot_upper(ax, r, title, cmap):
-        # Use relative threshold: treat pattern as zero if peak < 1e-6 × median.
-        # This avoids amplifying floating-point noise when TE/TM destructively
-        # cancels (e.g. M_10 at h=0 where image term exactly cancels direct term).
-        peak = r.max()
+        peak   = r.max()
         median = np.median(r)
-        r_norm = r / peak if (peak > 0 and peak > 1e-6 * max(median, 1e-30)) else np.zeros_like(r)
+        r_norm = r / peak if (peak > 0 and peak > 1e-6 * max(median, 1e-30)) \
+                          else np.zeros_like(r)
         x = r_norm * np.sin(THETA) * np.cos(PHI)
         y = r_norm * np.sin(THETA) * np.sin(PHI)
         z = r_norm * np.cos(THETA)
-        # Ground plane indicator
         phi_disc = np.linspace(0, 2 * np.pi, 60)
         ax.plot(0.9 * np.cos(phi_disc), 0.9 * np.sin(phi_disc),
                 np.zeros(60), color='k', lw=0.8, alpha=0.4)
@@ -540,34 +519,54 @@ def plot_vsh_image_theory(l=1, m=0, heights_m=None, freq_mhz=75.0,
                         facecolors=plt.colormaps[cmap](r_norm),
                         rstride=1, cstride=1, linewidth=0,
                         antialiased=False, shade=False)
-        ax.set_title(title, fontsize=8, pad=2)
+        ax.set_title(title, fontsize=7, pad=2)
         ax.set_axis_off()
         lim = 0.85
         ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-0.1, lim)
         ax.view_init(elev=20, azim=45)
 
-    for col, h in enumerate(heights_m):
-        phase = np.exp(2j * k * h * cos_t)
+    n_h      = len(heights_m)
+    n_modes  = len(modes)
+    n_rows   = 2 * n_modes   # M row + N row per mode
+    fig = plt.figure(figsize=(3.2 * n_h, 3.2 * n_rows))
+    fig.suptitle(f'Image theory above PEC — {freq_mhz:.0f} MHz',
+                 fontsize=13, y=1.01)
 
-        B_M = (np.abs(M_th_d + M_th_i * phase)**2
-             + np.abs(M_ph_d - M_ph_i * phase)**2)
-        B_N = (np.abs(N_th_d + N_th_i * phase)**2
-             + np.abs(N_ph_d - N_ph_i * phase)**2)
+    safe_sin_d = np.where(np.sin(THETA)     > 1e-10, np.sin(THETA),     1.0)
+    safe_sin_i = np.where(np.sin(THETA_img) > 1e-10, np.sin(THETA_img), 1.0)
 
-        ax_M = fig.add_subplot(2, n_h, col + 1, projection='3d')
-        _plot_upper(ax_M, B_M,
-                    title=rf'$M_{{{l},{m}}}$  {_h_label(h)}',
-                    cmap='Blues')
+    for row_pair, (l, m) in enumerate(modes):
+        M_th_d, M_ph_d, N_th_d, N_ph_d = _vsh_components(l, m, THETA,     safe_sin_d)
+        M_th_i, M_ph_i, N_th_i, N_ph_i = _vsh_components(l, m, THETA_img, safe_sin_i)
 
-        ax_N = fig.add_subplot(2, n_h, n_h + col + 1, projection='3d')
-        _plot_upper(ax_N, B_N,
-                    title=rf'$N_{{{l},{m}}}$  {_h_label(h)}',
-                    cmap='Oranges')
+        row_M = 2 * row_pair       # subplot row index for M
+        row_N = 2 * row_pair + 1   # subplot row index for N
 
-    fig.text(0.01, 0.75, 'M mode (TE)', va='center', rotation='vertical',
-             fontsize=10, fontweight='bold')
-    fig.text(0.01, 0.25, 'N mode (TM)', va='center', rotation='vertical',
-             fontsize=10, fontweight='bold')
+        for col, h in enumerate(heights_m):
+            phase = np.exp(2j * k * h * cos_t)
+
+            B_M = (np.abs(M_th_d + M_th_i * phase)**2
+                 + np.abs(M_ph_d - M_ph_i * phase)**2)
+            B_N = (np.abs(N_th_d + N_th_i * phase)**2
+                 + np.abs(N_ph_d - N_ph_i * phase)**2)
+
+            ax_M = fig.add_subplot(n_rows, n_h, row_M * n_h + col + 1, projection='3d')
+            _plot_upper(ax_M, B_M,
+                        title=rf'$M_{{{l},{m}}}$  {_h_label(h)}',
+                        cmap='Blues')
+
+            ax_N = fig.add_subplot(n_rows, n_h, row_N * n_h + col + 1, projection='3d')
+            _plot_upper(ax_N, B_N,
+                        title=rf'$N_{{{l},{m}}}$  {_h_label(h)}',
+                        cmap='Oranges')
+
+        # Row labels on the left
+        y_M = 1.0 - (row_M + 0.5) / n_rows
+        y_N = 1.0 - (row_N + 0.5) / n_rows
+        fig.text(0.01, y_M, rf'$M_{{{l},{m}}}$ (TE)', va='center',
+                 rotation='vertical', fontsize=9, fontweight='bold')
+        fig.text(0.01, y_N, rf'$N_{{{l},{m}}}$ (TM)', va='center',
+                 rotation='vertical', fontsize=9, fontweight='bold')
 
     fig.tight_layout()
     if output_path is not None:
